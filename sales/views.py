@@ -517,6 +517,29 @@ class MyOrderListView(generics.ListAPIView):
         return queryset.order_by('-created_at')
 
 
+# === VISTA PARA MÉTODOS DE PAGO (NUEVO) ===
+from rest_framework import viewsets, permissions
+from .models import PaymentMethod
+from .serializers import PaymentMethodSerializer
+from api.permissions import IsAdminUser
+
+class PaymentMethodViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint para gestionar los métodos de pago.
+    - GET: Acceso público
+    - POST/PUT/DELETE: Solo administradores
+    """
+    queryset = PaymentMethod.objects.filter(is_active=True)
+    serializer_class = PaymentMethodSerializer
+    
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            permission_classes = [permissions.AllowAny]
+        else:
+            permission_classes = [IsAdminUser]
+        return [permission() for permission in permission_classes]
+
+
 # ============================================================
 # ❌ ELIMINADO: GenerateDynamicReportView (CÓDIGO DUPLICADO)
 # ============================================================

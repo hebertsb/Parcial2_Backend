@@ -1,11 +1,11 @@
 # api/views/user.py
-from rest_framework import generics, status
+from rest_framework import generics, status, viewsets
 from rest_framework.response import Response
 from django.contrib.auth.models import User
 from ..serializers import AdminUserSerializer
 from ..permissions import IsAdminUser
+from ..models import Profile
 
-# CAMBIO: Cambiamos ListAPIView por ListCreateAPIView
 class UserListView(generics.ListCreateAPIView):
     """
     Vista para listar y CREAR usuarios.
@@ -31,9 +31,9 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
         self.perform_destroy(instance)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
-class ClientListView(generics.ListAPIView):
+class ClientViewSet(viewsets.ModelViewSet):
     """
-    Vista para listar solo a los usuarios con el rol de 'CLIENTE'.
+    ViewSet para gestionar (CRUD) a los usuarios con el rol de 'CLIENTE'.
     Solo accesible por administradores.
     """
     serializer_class = AdminUserSerializer
@@ -41,7 +41,13 @@ class ClientListView(generics.ListAPIView):
 
     def get_queryset(self):
         """
-        Este método filtra el queryset para devolver solo los usuarios
-        cuyo perfil tiene el rol 'CLIENT'.
+        Filtra el queryset para devolver solo usuarios con el rol 'CLIENT'.
         """
-        return User.objects.filter(profile__role='CLIENT')
+        return User.objects.filter(profile__role='CLIENT').order_by('id')
+
+    def perform_create(self, serializer):
+        """
+        Forzar el rol 'CLIENT' al crear desde este endpoint.
+        El serializador espera un diccionario de perfil, así que se lo pasamos.
+        """
+        serializer.save(profile={'role': 'CLIENT'})

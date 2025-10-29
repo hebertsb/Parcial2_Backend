@@ -1,0 +1,97 @@
+Mapeo de Endpoints y Casos de Uso Implementados
+===============================================
+
+---
+
+Autenticación y usuarios
+------------------------
+CU01 Iniciar sesión:
+  POST /api/login/
+CU02 Cerrar sesión:
+  POST /api/logout/
+CU03 Recuperar Contraseña:
+  POST /api/password-reset/
+  POST /api/password-reset/confirm/
+CU04 Registrar Cuenta de Cliente:
+  POST /api/register/
+CU06 Gestionar Clientes (CRUD):
+  GET, POST /api/clients/
+  GET, PUT, PATCH, DELETE /api/clients/{id}/
+
+---
+
+Productos, Marcas y Garantías
+-----------------------------
+CU05 Gestionar Productos (CRUD):
+  GET, POST /api/products/products/
+  GET, PUT, PATCH, DELETE /api/products/products/{id}/
+CU13 Buscar Productos (Texto):
+  GET /api/products/products/?search=...
+CU23 Gestionar Categorías (CRUD):
+  GET, POST /api/products/categories/
+  GET, PUT, PATCH, DELETE /api/products/categories/{slug}/
+CU24 Gestionar Marcas (CRUD):
+  GET, POST /api/products/brands/
+  GET, PUT, PATCH, DELETE /api/products/brands/{id}/
+CU25 Gestionar Garantías (CRUD):
+  GET, POST /api/products/warranties/
+  GET, PUT, PATCH, DELETE /api/products/warranties/{id}/
+
+---
+
+Ventas, Carrito y Pagos
+-----------------------
+CU07 Consultar Historial de Ventas:
+  GET /api/sales/sales-history/
+CU15/CU16 Gestionar Carrito de Compra:
+  GET, POST /api/sales/cart/
+  PUT, DELETE /api/sales/cart/items/{item_id}/
+CU18 Realizar Pago de Compra:
+  POST /api/sales/checkout/
+CU19 Recibir Comprobante de Venta:
+  GET /api/sales/sales-history/{order_id}/receipt/
+CU26 Gestionar Métodos de Pago (CRUD):
+  GET, POST /api/sales/config/payment-methods/
+  GET, PUT, PATCH, DELETE /api/sales/config/payment-methods/{id}/
+
+---
+
+Notificaciones y Alertas
+------------------------
+CU12 Recibir Alerta de Stock Mínimo (Push):
+  GET /api/sales/predictions/stock-alerts/
+  (La infraestructura de notificaciones está en /api/notifications/)
+CU20 Recibir Notificación Push (Estado de Compra):
+  (Infraestructura lista en /api/notifications/)
+
+---
+
+Reportes, Dashboards y ML
+-------------------------
+CU08 Visualizar Dashboard de Predicciones IA:
+  GET /api/sales/ml/dashboard/
+CU09 Generar Reporte Dinámico (Prompt de Texto):
+  POST /api/sales/reports/unified/generate/
+CU17 Interactuar con Chatbot de Recomendaciones:
+  GET /api/products/ml/recommendations/personalized/
+  GET /api/products/ml/recommendations/similar/{id}/
+CU21 Entrenar Modelo IA:
+  POST /api/sales/ml/train/
+CU22 Generar Predicción de Ventas:
+  GET /api/sales/ml/predictions/
+
+---
+
+Comandos de Voz
+---------------
+CU10 Generar Reporte Dinámico (Comando de Voz):
+  POST /api/voice-commands/process/
+CU14 Buscar Productos (Comando de Voz):
+  POST /api/voice-commands/process/
+
+---
+
+Casos de Uso No Implementados
+-----------------------------
+CU27 Gestionar Ofertas (CRUD):
+  (Requeriría crear modelo, vista y URL para /api/products/offers/)

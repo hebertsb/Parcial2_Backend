@@ -1,0 +1,45 @@
+Casos de Uso Implementados en el Backend
+========================================
+
+Este documento resume el estado de implementación de los casos de uso del proyecto.
+
+✅ Casos de Uso Completamente Implementados
+-----------------------------------------
+
+CU01 - Iniciar sesión: Implementado (/api/login/)
+CU02 - Cerrar Sesión: Implementado (/api/logout/)
+CU03 - Recuperar Contraseña: Implementado (/api/password-reset/)
+CU04 - Registrar Cuenta de Cliente: Implementado y mejorado con confirmación de contraseña (/api/register/).
+CU05 - Gestionar Productos (CRUD): Implementado (/api/products/products/).
+CU06 - Gestionar Clientes (CRUD): ✅ ¡Completado! CRUD disponible para administradores en /api/clients/.
+CU07 - Consultar Historial de Ventas: Implementado (/api/sales/sales-history/).
+CU08 - Visualizar Dashboard de Predicciones IA: Implementado (/api/sales/ml/dashboard/ y otros).
+CU09 - Generar Reporte Dinámico (Prompt de Texto): Implementado con el sistema de reportes unificado.
+CU11 - Visualizar Dashboards Resumidos (Móvil): Implementado (Backend). La API provee los datos.
+CU12 - Recibir Alerta de Stock Mínimo (Push): Implementado (Backend).
+CU13 - Buscar Productos (Texto): Implementado (filtros en /api/products/products/).
+CU15 - Gestionar Carrito de Compra (Texto): Implementado (/api/sales/cart/).
+CU17 - Interactuar con Chatbot de Recomendaciones: Implementado (/api/products/ml/recommendations/...).
+CU18 - Realizar Pago de Compra: Implementado (integración con Stripe en /api/sales/checkout/).
+CU19 - Recibir Comprobante de Venta: Implementado (generación de PDF de recibos).
+CU20 - Recibir Notificación Push (Estado de Compra): Implementado (Backend).
+CU21 - Entrenar Modelo IA: Implementado (/api/sales/ml/train/).
+CU22 - Generar Predicción de Ventas: Implementado (/api/sales/ml/predictions/).
+CU23 - Gestionar Categorías (CRUD): Implementado (/api/products/categories/).
+CU24 - Gestionar Marcas (CRUD): ✅ ¡Completado! CRUD disponible en /api/products/brands/.
+CU25 - Gestionar Garantías (CRUD): ✅ ¡Completado! CRUD disponible en /api/products/warranties/.
+CU26 - Gestionar Métodos de Pago (CRUD): ✅ ¡Completado! CRUD disponible en /api/sales/config/payment-methods/.
+
+
+🗣️ Casos de Uso de Voz (Probablemente Implementados)
+---------------------------------------------------
+La app `voice_commands` integra estos casos de uso con la lógica de negocio ya existente.
+
+CU10 - Generar Reporte Dinámico (Comando de Voz)
+CU14 - Buscar Productos (Comando de Voz)
+CU16 - Agregando Producto al Carrito (Voz)
+
+
+❌ Casos de Uso No Implementados
+-------------------------------
+CU27 - Gestionar Ofertas (CRUD): No implementado. Requeriría crear modelo, serializador, vista y URL para ofertas y descuentos.

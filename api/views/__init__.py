@@ -7,4 +7,4 @@ from .auth import (
     PasswordResetRequestView,  # <-- AÑADIR ESTA LÍNEA
     PasswordResetConfirmView   # <-- AÑADIR ESTA LÍNEA
 )
-from .user import UserListView, UserDetailView, ClientListView
+from .user import UserListView, UserDetailView, ClientViewSet

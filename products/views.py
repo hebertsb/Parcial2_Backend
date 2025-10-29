@@ -5,8 +5,8 @@ from django.views.decorators.cache import cache_page
 from django.utils.decorators import method_decorator
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
-from .models import Category, Product
-from .serializers import CategorySerializer, ProductSerializer
+from .models import Category, Product, Brand, Warranty
+from .serializers import CategorySerializer, ProductSerializer, BrandSerializer, WarrantySerializer
 from .filters import ProductFilter
 from api.permissions import IsAdminUser
 import os
@@ -37,6 +37,40 @@ class CategoryViewSet(viewsets.ModelViewSet):
     @method_decorator(cache_page(60 * 5))
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+
+class BrandViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint para gestionar marcas.
+    - GET: Acceso público
+    - POST/PUT/DELETE: Solo administradores
+    """
+    queryset = Brand.objects.filter(is_active=True)
+    serializer_class = BrandSerializer
+    
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            permission_classes = [permissions.AllowAny]
+        else:
+            permission_classes = [IsAdminUser]
+        return [permission() for permission in permission_classes]
+
+
+class WarrantyViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint para gestionar garantías.
+    - GET: Acceso público
+    - POST/PUT/DELETE: Solo administradores
+    """
+    queryset = Warranty.objects.all()
+    serializer_class = WarrantySerializer
+    
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            permission_classes = [permissions.AllowAny]
+        else:
+            permission_classes = [IsAdminUser]
+        return [permission() for permission in permission_classes]
 
 
 class ProductViewSet(viewsets.ModelViewSet):

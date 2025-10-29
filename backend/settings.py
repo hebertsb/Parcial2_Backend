@@ -26,7 +26,18 @@ SECRET_KEY = config('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,10.0.2.2,testserver').split(',')
+# Leer ALLOWED_HOSTS desde la variable de entorno y manejar distintos tipos
+_allowed_hosts_raw = config(
+    'ALLOWED_HOSTS',
+    default='localhost,127.0.0.1,10.0.2.2,testserver'
+)
+if isinstance(_allowed_hosts_raw, str):
+    ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts_raw.split(',') if h.strip()]
+elif isinstance(_allowed_hosts_raw, (list, tuple)):
+    ALLOWED_HOSTS = [str(h) for h in _allowed_hosts_raw]
+else:
+    # Fallback: convertir a string para evitar errores de atributo
+    ALLOWED_HOSTS = [str(_allowed_hosts_raw)]
 
 # Security settings for production
 if not DEBUG:
@@ -98,14 +109,21 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('DB_NAME'),
-        'USER': config('DB_USER'),
-        'PASSWORD': config('DB_PASSWORD'),
-        'HOST': config('DB_HOST'),
-        'PORT': config('DB_PORT'),
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
+
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': config('DB_NAME'),
+#         'USER': config('DB_USER'),
+#         'PASSWORD': config('DB_PASSWORD'),
+#         'HOST': config('DB_HOST'),
+#         'PORT': config('DB_PORT'),
+#     }
+# }
 
 # Cache configuration for ML predictions
 # Usar LocMemCache por defecto (no requiere Redis)
@@ -179,10 +197,20 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Configuración de CORS
 # En desarrollo permite orígenes específicos, en producción debe ser más restrictivo
-CORS_ALLOWED_ORIGINS = config(
+cors_allowed_origins_raw = config(
     'CORS_ALLOWED_ORIGINS',
-    default='http://localhost:3000,http://127.0.0.1:3000'
-).split(',')
+    default='http://localhost:3000,http://127.0.0.1:3000',
+    cast=str
+)
+if isinstance(cors_allowed_origins_raw, str):
+    CORS_ALLOWED_ORIGINS = [o.strip() for o in cors_allowed_origins_raw.split(',') if o.strip()]
+else:
+    # Asegurar que siempre sea una lista de strings; cubrir casos donde la variable de entorno
+    # pueda haber sido interpretada como otro tipo (p.ej. bool)
+    if isinstance(cors_allowed_origins_raw, (list, tuple)):
+        CORS_ALLOWED_ORIGINS = [str(o) for o in cors_allowed_origins_raw]
+    else:
+        CORS_ALLOWED_ORIGINS = [str(cors_allowed_origins_raw)]
 
 CORS_ALLOW_CREDENTIALS = True
 

@@ -131,7 +131,29 @@
       },
       "notes": "Entrenamiento manual desde API",
       "file_size_mb": 0.04
+    },
+    {
+      "version": "20251028_170109",
+      "filename": "sales_model_20251028_170109.pkl",
+      "saved_at": "2025-10-28T17:01:09.755593",
+      "metrics": {
+        "training_samples": 541,
+        "start_date": "2024-05-07",
+        "end_date": "2025-10-29",
+        "total_sales": 4945085.0,
+        "average_daily_sales": 9140.637707948244,
+        "std_daily_sales": 5351.442148131446,
+        "min_daily_sales": 465.0,
+        "max_daily_sales": 29960.0,
+        "trained_at": "2025-10-28T21:01:09.748311+00:00",
+        "mae": 3867.3072044478517,
+        "rmse": 4873.301086922706,
+        "mape": 79.83368693984147,
+        "r2_score": 0.1691773572778852
+      },
+      "notes": "Re-entrenamiento autom\u00e1tico",
+      "file_size_mb": 0.04
     }
   ],
-  "current_model": "20251020_221629"
+  "current_model": "20251028_170109"
 }

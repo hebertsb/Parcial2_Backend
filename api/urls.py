@@ -1,5 +1,6 @@
 # api/urls.py
-from django.urls import path
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
 from .views import (
     register_view,
     login_view,
@@ -7,10 +8,14 @@ from .views import (
     UserProfileView,
     UserListView,
     UserDetailView,
-    PasswordResetRequestView,  # <-- Importar
+    PasswordResetRequestView,
     PasswordResetConfirmView,
-    ClientListView
+    ClientViewSet # Import the new ViewSet
 )
+
+# Create a router and register our viewsets with it.
+router = DefaultRouter()
+router.register(r'clients', ClientViewSet, basename='client')
 
 urlpatterns = [
     # --- Autenticación ---
@@ -24,6 +29,8 @@ urlpatterns = [
 
     # --- Gestión de Usuarios (SOLO ADMINS) ---
     path('users/', UserListView.as_view(), name='user-list'),
-path('clients/', ClientListView.as_view(), name='client-list'),
     path('users/<int:pk>/', UserDetailView.as_view(), name='user-detail'),
+
+    # --- Gestión de Clientes (CRUD via ViewSet) ---
+    path('', include(router.urls)),
 ]

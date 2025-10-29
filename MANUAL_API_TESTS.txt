@@ -1,0 +1,115 @@
+
+
+-------------------------------------------------
+### 9. GESTIÓN (ADMIN)
+-------------------------------------------------
+**Nota:** Para probar estos endpoints, necesitas un token de un usuario Administrador.
+Inicia sesión con un usuario admin (ej: `admin`, `adminpass`) para obtener el token.
+
+#### 9.1. Gestionar Clientes (CRUD)
+
+- **Listar Clientes:**
+  - **Método:** `GET`
+  - **URL:** `http://127.0.0.1:8000/api/clients/`
+  - **Headers:** `Authorization: Bearer <TOKEN_ADMIN>`
+
+- **Crear Cliente:**
+  - **Método:** `POST`
+  - **URL:** `http://127.0.0.1:8000/api/clients/`
+  - **Headers:** `Authorization: Bearer <TOKEN_ADMIN>`, `Content-Type: application/json`
+  - **Body (raw, JSON):**
+    ```json
+    {
+        "username": "cliente_desde_admin",
+        "password": "password123",
+        "email": "cliente_admin@test.com",
+        "first_name": "CreadoPor",
+        "last_name": "Admin"
+    }
+    ```
+
+- **Ver Detalle, Actualizar, Eliminar Cliente (ID=2):**
+  - **Ver:** `GET http://127.0.0.1:8000/api/clients/2/`
+  - **Actualizar:** `PUT http://127.0.0.1:8000/api/clients/2/` (enviar body con los campos a cambiar)
+  - **Eliminar:** `DELETE http://127.0.0.1:8000/api/clients/2/`
+  - **Headers:** `Authorization: Bearer <TOKEN_ADMIN>`
+
+---
+
+#### 9.2. Gestionar Marcas (CRUD)
+
+- **Listar Marcas:**
+  - **Método:** `GET`
+  - **URL:** `http://127.0.0.1:8000/api/products/brands/`
+  - **Headers:** `Authorization: Bearer <TOKEN_ADMIN>`
+
+- **Crear Marca:**
+  - **Método:** `POST`
+  - **URL:** `http://127.0.0.1:8000/api/products/brands/`
+  - **Headers:** `Authorization: Bearer <TOKEN_ADMIN>`, `Content-Type: application/json`
+  - **Body (raw, JSON):**
+    ```json
+    {
+        "name": "Nueva Marca Test"
+    }
+    ```
+
+- **Ver Detalle, Actualizar, Eliminar Marca (ID=1):**
+  - **Ver:** `GET http://127.0.0.1:8000/api/products/brands/1/`
+  - **Actualizar:** `PUT http://127.0.0.1:8000/api/products/brands/1/` (enviar `{"name": "Marca Editada"}`)
+  - **Eliminar:** `DELETE http://127.0.0.1:8000/api/products/brands/1/`
+  - **Headers:** `Authorization: Bearer <TOKEN_ADMIN>`
+
+---
+
+#### 9.3. Gestionar Garantías (CRUD)
+
+- **Listar Garantías:**
+  - **Método:** `GET`
+  - **URL:** `http://127.0.0.1:8000/api/products/warranties/`
+  - **Headers:** `Authorization: Bearer <TOKEN_ADMIN>`
+
+- **Crear Garantía:**
+  - **Método:** `POST`
+  - **URL:** `http://127.0.0.1:8000/api/products/warranties/`
+  - **Headers:** `Authorization: Bearer <TOKEN_ADMIN>`, `Content-Type: application/json`
+  - **Body (raw, JSON):**
+    ```json
+    {
+        "name": "Garantía Extendida 2 Años",
+        "duration_days": 730,
+        "details": "Cubre defectos de fábrica por 2 años."
+    }
+    ```
+
+- **Ver Detalle, Actualizar, Eliminar Garantía (ID=1):**
+  - **Ver:** `GET http://127.0.0.1:8000/api/products/warranties/1/`
+  - **Actualizar:** `PUT http://127.0.0.1:8000/api/products/warranties/1/`
+  - **Eliminar:** `DELETE http://127.0.0.1:8000/api/products/warrantiess/1/`
+  - **Headers:** `Authorization: Bearer <TOKEN_ADMIN>`
+
+---
+
+#### 9.4. Gestionar Métodos de Pago (CRUD)
+
+- **Listar Métodos de Pago:**
+  - **Método:** `GET`
+  - **URL:** `http://127.0.0.1:8000/api/sales/config/payment-methods/`
+  - **Headers:** `Authorization: Bearer <TOKEN_ADMIN>`
+
+- **Crear Método de Pago:**
+  - **Método:** `POST`
+  - **URL:** `http://127.0.0.1:8000/api/sales/config/payment-methods/`
+  - **Headers:** `Authorization: Bearer <TOKEN_ADMIN>`, `Content-Type: application/json`
+  - **Body (raw, JSON):**
+    ```json
+    {
+        "name": "Transferencia Bancaria"
+    }
+    ```
+
+- **Ver Detalle, Actualizar, Eliminar Método de Pago (ID=1):**
+  - **Ver:** `GET http://127.0.0.1:8000/api/sales/config/payment-methods/1/`
+  - **Actualizar:** `PUT http://127.0.0.1:8000/api/sales/config/payment-methods/1/`
+  - **Eliminar:** `DELETE http://127.0.0.1:8000/api/sales/config/payment-methods/1/`
+  - **Headers:** `Authorization: Bearer <TOKEN_ADMIN>`

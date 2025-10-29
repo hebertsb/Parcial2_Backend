@@ -1,9 +1,22 @@
-from django.urls import path
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
 from .views import (
     CartView, CartItemView, StripeCheckoutView, StripeWebhookView, CompleteOrderView, 
-    ManualOrderCompletionView, SalesHistoryView, SalesHistoryDetailView, GenerateOrderReceiptPDF, MyOrderListView
-    # ❌ ELIMINADO: GenerateDynamicReportView (duplicado - usar sistema unificado)
+    ManualOrderCompletionView, SalesHistoryView, SalesHistoryDetailView, GenerateOrderReceiptPDF, MyOrderListView,
+    PaymentMethodViewSet # Importar el nuevo ViewSet
 )
+# ... (resto de importaciones)
+
+# Router para endpoints de configuración
+config_router = DefaultRouter()
+config_router.register(r'payment-methods', PaymentMethodViewSet, basename='payment-method')
+
+urlpatterns = [
+    # ... (urlpatterns existentes) ...
+
+    # === ⚙️ ENDPOINTS DE CONFIGURACIÓN (NUEVO) ===
+    path('config/', include(config_router.urls)),
+]
 from .views_advanced_reports import (
     CustomerAnalysisReportView, ProductABCAnalysisView, ComparativeReportView,
     ExecutiveDashboardView, InventoryAnalysisView

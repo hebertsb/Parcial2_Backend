@@ -5,6 +5,22 @@ from products.models import Product
 # Importar modelos de auditoría
 from .models_audit import AuditLog, UserSession
 
+
+class PaymentMethod(models.Model):
+    """
+    Modelo para gestionar los métodos de pago disponibles (Ej: Tarjeta, Efectivo).
+    """
+    name = models.CharField(max_length=100, unique=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = "Método de Pago"
+        verbose_name_plural = "Métodos de Pago"
+
+    def __str__(self):
+        return self.name
+
+
 class Order(models.Model):
     class OrderStatus(models.TextChoices):
         PENDING = 'PENDING', 'Pending'       # Actúa como el carrito de compras
@@ -13,6 +29,7 @@ class Order(models.Model):
         CANCELLED = 'CANCELLED', 'Cancelled'
 
     customer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='orders')
+    payment_method = models.ForeignKey(PaymentMethod, on_delete=models.SET_NULL, null=True, blank=True)
     status = models.CharField(max_length=20, choices=OrderStatus.choices, default=OrderStatus.PENDING)
     total_price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
 
