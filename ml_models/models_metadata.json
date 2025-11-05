@@ -1,0 +1,159 @@
+{
+  "models": [
+    {
+      "version": "20251020_164434",
+      "filename": "sales_model_20251020_164434.pkl",
+      "saved_at": "2025-10-20T16:44:34.387285",
+      "metrics": {
+        "training_samples": 541,
+        "start_date": "2024-04-29",
+        "end_date": "2025-10-21",
+        "total_sales": 8020693.62,
+        "average_daily_sales": 14825.681367837338,
+        "std_daily_sales": 6638.125037648305,
+        "min_daily_sales": 2779.9,
+        "max_daily_sales": 44668.94,
+        "trained_at": "2025-10-20T20:44:34.380215+00:00",
+        "mae": 4680.171198952286,
+        "rmse": 5854.957306084107,
+        "mape": 42.045641460622434,
+        "r2_score": 0.22060051741568742
+      },
+      "notes": "Re-entrenamiento autom\u00e1tico",
+      "file_size_mb": 0.04
+    },
+    {
+      "version": "20251020_202626",
+      "filename": "sales_model_20251020_202626.pkl",
+      "saved_at": "2025-10-20T20:26:26.570684",
+      "metrics": {
+        "training_samples": 541,
+        "start_date": "2024-04-29",
+        "end_date": "2025-10-21",
+        "total_sales": 8020693.62,
+        "average_daily_sales": 14825.681367837338,
+        "std_daily_sales": 6638.125037648305,
+        "min_daily_sales": 2779.9,
+        "max_daily_sales": 44668.94,
+        "trained_at": "2025-10-21T00:26:26.561632+00:00",
+        "mae": 4680.171198952286,
+        "rmse": 5854.957306084107,
+        "mape": 42.045641460622434,
+        "r2_score": 0.22060051741568742
+      },
+      "notes": "Entrenamiento manual desde API",
+      "file_size_mb": 0.04
+    },
+    {
+      "version": "20251020_212958",
+      "filename": "sales_model_20251020_212958.pkl",
+      "saved_at": "2025-10-20T21:29:58.583404",
+      "metrics": {
+        "training_samples": 541,
+        "start_date": "2024-04-29",
+        "end_date": "2025-10-21",
+        "total_sales": 8020693.62,
+        "average_daily_sales": 14825.681367837338,
+        "std_daily_sales": 6638.125037648305,
+        "min_daily_sales": 2779.9,
+        "max_daily_sales": 44668.94,
+        "trained_at": "2025-10-21T01:29:58.577848+00:00",
+        "mae": 4680.171198952286,
+        "rmse": 5854.957306084107,
+        "mape": 42.045641460622434,
+        "r2_score": 0.22060051741568742
+      },
+      "notes": "Entrenamiento manual desde API",
+      "file_size_mb": 0.04
+    },
+    {
+      "version": "20251020_221350",
+      "filename": "sales_model_20251020_221350.pkl",
+      "saved_at": "2025-10-20T22:13:50.464606",
+      "metrics": {
+        "training_samples": 541,
+        "start_date": "2024-04-29",
+        "end_date": "2025-10-21",
+        "total_sales": 8020693.62,
+        "average_daily_sales": 14825.681367837338,
+        "std_daily_sales": 6638.125037648305,
+        "min_daily_sales": 2779.9,
+        "max_daily_sales": 44668.94,
+        "trained_at": "2025-10-21T02:13:50.456748+00:00",
+        "mae": 4680.171198952286,
+        "rmse": 5854.957306084107,
+        "mape": 42.045641460622434,
+        "r2_score": 0.22060051741568742
+      },
+      "notes": "Entrenamiento manual desde API",
+      "file_size_mb": 0.04
+    },
+    {
+      "version": "20251020_221624",
+      "filename": "sales_model_20251020_221624.pkl",
+      "saved_at": "2025-10-20T22:16:24.336560",
+      "metrics": {
+        "training_samples": 541,
+        "start_date": "2024-04-29",
+        "end_date": "2025-10-21",
+        "total_sales": 8020693.62,
+        "average_daily_sales": 14825.681367837338,
+        "std_daily_sales": 6638.125037648305,
+        "min_daily_sales": 2779.9,
+        "max_daily_sales": 44668.94,
+        "trained_at": "2025-10-21T02:16:24.332028+00:00",
+        "mae": 4680.171198952286,
+        "rmse": 5854.957306084107,
+        "mape": 42.045641460622434,
+        "r2_score": 0.22060051741568742
+      },
+      "notes": "Entrenamiento manual desde API",
+      "file_size_mb": 0.04
+    },
+    {
+      "version": "20251020_221629",
+      "filename": "sales_model_20251020_221629.pkl",
+      "saved_at": "2025-10-20T22:16:29.527017",
+      "metrics": {
+        "training_samples": 541,
+        "start_date": "2024-04-29",
+        "end_date": "2025-10-21",
+        "total_sales": 8020693.62,
+        "average_daily_sales": 14825.681367837338,
+        "std_daily_sales": 6638.125037648305,
+        "min_daily_sales": 2779.9,
+        "max_daily_sales": 44668.94,
+        "trained_at": "2025-10-21T02:16:29.522016+00:00",
+        "mae": 4680.171198952286,
+        "rmse": 5854.957306084107,
+        "mape": 42.045641460622434,
+        "r2_score": 0.22060051741568742
+      },
+      "notes": "Entrenamiento manual desde API",
+      "file_size_mb": 0.04
+    },
+    {
+      "version": "20251028_170109",
+      "filename": "sales_model_20251028_170109.pkl",
+      "saved_at": "2025-10-28T17:01:09.755593",
+      "metrics": {
+        "training_samples": 541,
+        "start_date": "2024-05-07",
+        "end_date": "2025-10-29",
+        "total_sales": 4945085.0,
+        "average_daily_sales": 9140.637707948244,
+        "std_daily_sales": 5351.442148131446,
+        "min_daily_sales": 465.0,
+        "max_daily_sales": 29960.0,
+        "trained_at": "2025-10-28T21:01:09.748311+00:00",
+        "mae": 3867.3072044478517,
+        "rmse": 4873.301086922706,
+        "mape": 79.83368693984147,
+        "r2_score": 0.1691773572778852
+      },
+      "notes": "Re-entrenamiento autom\u00e1tico",
+      "file_size_mb": 0.04
+    }
+  ],
+  "current_model": "20251028_170109"
+}
