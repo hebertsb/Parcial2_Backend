@@ -29,7 +29,7 @@ DEBUG = config('DEBUG', default=False, cast=bool)
 # Leer ALLOWED_HOSTS desde la variable de entorno y manejar distintos tipos
 _allowed_hosts_raw = config(
     'ALLOWED_HOSTS',
-    default='localhost,127.0.0.1,10.0.2.2,testserver'
+    default='localhost,127.0.0.1,10.0.2.2,testserver,192.168.1.11'
 )
 if isinstance(_allowed_hosts_raw, str):
     ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts_raw.split(',') if h.strip()]
@@ -38,6 +38,10 @@ elif isinstance(_allowed_hosts_raw, (list, tuple)):
 else:
     # Fallback: convertir a string para evitar errores de atributo
     ALLOWED_HOSTS = [str(_allowed_hosts_raw)]
+
+# En desarrollo, permitir todos los hosts para facilitar pruebas desde emuladores/dispositivos
+if DEBUG:
+    ALLOWED_HOSTS = ['*']
 
 # Security settings for production
 if not DEBUG:
@@ -196,6 +200,10 @@ MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Configuración de CORS
+# Para desarrollo, permitimos todos los orígenes para facilitar la conexión desde Flutter.
+# En producción, esto debe ser False y CORS_ALLOWED_ORIGINS debe ser configurado correctamente.
+CORS_ALLOW_ALL_ORIGINS = True
+
 # En desarrollo permite orígenes específicos, en producción debe ser más restrictivo
 cors_allowed_origins_raw = config(
     'CORS_ALLOWED_ORIGINS',
@@ -301,6 +309,22 @@ except:
 STRIPE_PUBLIC_KEY = config('STRIPE_PUBLIC_KEY')
 STRIPE_SECRET_KEY = config('STRIPE_SECRET_KEY')
 STRIPE_WEBHOOK_SECRET = config('STRIPE_WEBHOOK_SECRET')
+
+# URL base del frontend (para construir success_url/cancel_url de Stripe por defecto)
+# Ejemplo: http://localhost:3000 o https://mi-dominio.com
+FRONTEND_BASE_URL = config('FRONTEND_BASE_URL', default='http://localhost:3000')
+
+# Listas de seguridad para URLs de retorno opcionales en checkout
+# Permiten deep links y dominios específicos cuando el cliente móvil necesite override de success_url/cancel_url
+# Notas de robustez:
+# - Forzamos a string con str() para evitar que Pylance marque .split sobre bool u otros tipos.
+# - Luego normalizamos a lista de strings separando por comas y haciendo strip.
+# Formato coma-separada: "miapp,miotraapp"
+_allowed_deep_link_schemes_raw: str = str(config('ALLOWED_DEEP_LINK_SCHEMES', default=''))
+ALLOWED_DEEP_LINK_SCHEMES = [s.strip() for s in _allowed_deep_link_schemes_raw.split(',') if s.strip()]
+# Formato coma-separada: "localhost,mi-dominio.com"
+_allowed_return_hosts_raw: str = str(config('ALLOWED_CHECKOUT_RETURN_HOSTS', default='localhost'))
+ALLOWED_CHECKOUT_RETURN_HOSTS = [h.strip() for h in _allowed_return_hosts_raw.split(',') if h.strip()]
 
 # --- CONFIGURACIÓN DE FIREBASE CLOUD MESSAGING ---
 # Ruta al archivo de credenciales de Firebase

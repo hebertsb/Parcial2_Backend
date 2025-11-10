@@ -26,6 +26,8 @@ urlpatterns = [
     path('password-reset/confirm/', PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
     # --- Perfil de Usuario (para el usuario logueado) ---
     path('profile/', UserProfileView.as_view(), name='user-profile'),
+    # Alias para compatibilidad con frontends que consumen /api/me/
+    path('me/', UserProfileView.as_view(), name='me'),
 
     # --- Gestión de Usuarios (SOLO ADMINS) ---
     path('users/', UserListView.as_view(), name='user-list'),

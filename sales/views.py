@@ -1,6 +1,8 @@
 import django_filters
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import views, response, status, permissions, generics
-from .models import Order, OrderItem, Product
+from .models import Order, OrderItem
+from products.models import Product
 from .serializers import OrderSerializer
 from django.conf import settings
 import stripe
@@ -15,6 +17,8 @@ from datetime import datetime, timedelta
 from django.utils import timezone
 import re
 from api.permissions import IsAdminUser  # Importar permiso personalizado
+from io import BytesIO
+from typing import Optional
 class CartView(views.APIView):
     """
     Vista para gestionar el carrito de compras del usuario.
@@ -26,12 +30,14 @@ class CartView(views.APIView):
         Obtiene o crea el carrito de compras actual (en estado 'PENDING') del usuario.
         """
         # ✅ OPTIMIZADO: prefetch_related para traer items y productos en una consulta
-        cart = Order.objects.filter(
-            customer=request.user, 
-            status='PENDING'
-        ).prefetch_related('items__product__category').first()
-        
-        if not cart:
+        cart = (
+            Order.objects.filter(
+                customer=request.user,
+                status='PENDING'
+            ).prefetch_related('items__product__category').first()
+        )
+
+        if cart is None:
             cart = Order.objects.create(customer=request.user, status='PENDING', total_price=0.00)
         serializer = OrderSerializer(cart)
         return response.Response(serializer.data)
@@ -52,7 +58,7 @@ class CartView(views.APIView):
         except Product.DoesNotExist:
             return response.Response({'error': 'Product not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        cart, _ = Order.objects.get_or_create(customer=request.user, status='PENDING')
+        cart, _ = Order.objects.get_or_create(customer=request.user, status='PENDING')  # type: ignore[assignment]
 
         # Si el producto ya está en el carrito, actualiza la cantidad. Si no, lo crea.
         order_item, created = OrderItem.objects.get_or_create(order=cart, product=product, defaults={'price': product.price})
@@ -69,7 +75,9 @@ class CartView(views.APIView):
         order_item.save()
 
         # Recalcula el precio total del carrito
-        cart.total_price = sum(item.price * item.quantity for item in cart.items.all())
+        # Guard clause por tipado estático
+        assert cart is not None
+        cart.total_price = sum(item.price * item.quantity for item in cart.items.all())  # type: ignore[attr-defined]
         cart.save()
 
         serializer = OrderSerializer(cart)
@@ -104,7 +112,7 @@ class CartItemView(views.APIView):
 
         # Recalcula el precio total
         cart = order_item.order
-        cart.total_price = sum(item.price * item.quantity for item in cart.items.all())
+        cart.total_price = sum(item.price * item.quantity for item in cart.items.all())  # items es related_name  # type: ignore[attr-defined]
         cart.save()
 
         serializer = OrderSerializer(cart)
@@ -123,7 +131,7 @@ class CartItemView(views.APIView):
         order_item.delete()
 
         # Recalcula el precio total
-        cart.total_price = sum(item.price * item.quantity for item in cart.items.all())
+        cart.total_price = sum(item.price * item.quantity for item in cart.items.all())  # type: ignore[attr-defined]
         cart.save()
 
         serializer = OrderSerializer(cart)
@@ -135,19 +143,28 @@ class StripeCheckoutView(views.APIView):
     def post(self, request):
         """
         Crea una sesión de pago en Stripe con los artículos del carrito.
+                Soporta success_url y cancel_url dinámicos para web y móvil.
+                Opcionalmente el cliente puede enviar en el body:
+                {
+                    "success_url": "miapp://checkout/success",
+                    "cancel_url": "miapp://checkout/cancel"
+                }
+                Estas URLs se validan contra listas en settings:
+                - ALLOWED_DEEP_LINK_SCHEMES (para esquemas tipo miapp://)
+                - ALLOWED_CHECKOUT_RETURN_HOSTS (para hosts http/https)
         """
         # Asigna la clave secreta de Stripe desde la configuración
         stripe.api_key = settings.STRIPE_SECRET_KEY
 
         try:
             # 1. Obtiene el carrito del usuario
-            cart = Order.objects.get(customer=request.user, status='PENDING')
-            if not cart.items.exists():
+            cart: Order = Order.objects.get(customer=request.user, status='PENDING')
+            if not cart.items.exists():  # type: ignore[attr-defined]
                 return response.Response({'error': 'Your cart is empty.'}, status=status.HTTP_400_BAD_REQUEST)
 
             # 2. Prepara la lista de productos para Stripe
             line_items = []
-            for item in cart.items.all():
+            for item in cart.items.all():  # type: ignore[attr-defined]
                 line_items.append({
                     'price_data': {
                         'currency': 'usd', # Puedes cambiarlo a tu moneda local (ej. 'bob')
@@ -159,11 +176,36 @@ class StripeCheckoutView(views.APIView):
                     'quantity': item.quantity,
                 })
 
-            # 3. Define las URLs de éxito y cancelación
-            # (Estas son las páginas a las que Stripe redirigirá al usuario después del pago)
-            frontend_base_url = "http://localhost:3000"
-            success_url = f"{frontend_base_url}/order/success?session_id={{CHECKOUT_SESSION_ID}}"  # Pasamos el ID de sesión para verificación opcional
-            cancel_url = f"{frontend_base_url}/order/cancel"
+            # 3. Construir success_url y cancel_url (web o deep link)
+            # Por defecto usamos FRONTEND_BASE_URL del settings
+            default_frontend = settings.FRONTEND_BASE_URL.rstrip('/')
+            success_url = f"{default_frontend}/order/success?session_id={{CHECKOUT_SESSION_ID}}"
+            cancel_url = f"{default_frontend}/order/cancel"
+
+            requested_success = request.data.get('success_url')
+            requested_cancel = request.data.get('cancel_url')
+
+            def _is_allowed_url(url: str) -> bool:
+                """Valida URL http(s) o deep link contra allowlists."""
+                if not url:
+                    return False
+                url = url.strip()
+                # Deep link esquema
+                if '://' in url and not url.startswith('http'):  # esquema custom
+                    scheme = url.split('://', 1)[0]
+                    return scheme in settings.ALLOWED_DEEP_LINK_SCHEMES
+                # http/https
+                try:
+                    from urllib.parse import urlparse
+                    parsed = urlparse(url)
+                    return parsed.scheme in ['http', 'https'] and parsed.hostname in settings.ALLOWED_CHECKOUT_RETURN_HOSTS
+                except Exception:
+                    return False
+
+            if requested_success and _is_allowed_url(requested_success):
+                success_url = requested_success
+            if requested_cancel and _is_allowed_url(requested_cancel):
+                cancel_url = requested_cancel
 
             # 4. Crea la sesión de checkout en Stripe
             checkout_session = stripe.checkout.Session.create(
@@ -175,8 +217,8 @@ class StripeCheckoutView(views.APIView):
                 # Guarda el ID de nuestra orden en los metadatos de Stripe
                 # ¡Esto es crucial para saber qué orden se pagó!
                 metadata={
-                    'order_id': cart.id,
-                    'user_id': request.user.id
+                    'order_id': str(cart.id),  # type: ignore[attr-defined]
+                    'user_id': str(request.user.id)
                 }
             )
 
@@ -213,7 +255,7 @@ class StripeWebhookView(views.APIView):
         except ValueError as e:
             # Payload inválido
             return response.Response(status=status.HTTP_400_BAD_REQUEST)
-        except stripe.error.SignatureVerificationError as e:
+        except stripe.error.SignatureVerificationError:  # type: ignore[attr-defined]
             # Firma inválida
             return response.Response(status=status.HTTP_400_BAD_REQUEST)
 
@@ -229,19 +271,19 @@ class StripeWebhookView(views.APIView):
 
             try:
                 # 3. Encuentra la orden y actualiza su estado
-                order = Order.objects.get(id=order_id, status='PROCESSING')
+                order: Order = Order.objects.get(id=order_id, status='PROCESSING')
                 order.status = 'COMPLETED'
                 order.save()
 
                 # 4. Reduce el stock de los productos vendidos
-                for item in order.items.all():
+                for item in order.items.all():  # type: ignore[attr-defined]
                     product = item.product
                     if product.stock >= item.quantity:
                         product.stock -= item.quantity
                         product.save()
                     else:
                         # Manejar el caso de que no haya suficiente stock (raro, pero posible)
-                        print(f"Alerta: Stock insuficiente para el producto {product.id} en la orden {order.id}")
+                        print(f"Alerta: Stock insuficiente para el producto {product.id} en la orden {order.id}")  # type: ignore[attr-defined]
                         # Aquí podrías enviar un email de alerta al administrador
 
             except Order.DoesNotExist:
@@ -265,13 +307,13 @@ class CompleteOrderView(views.APIView):
     def post(self, request):
         try:
             # 1. Buscar orden en PROCESSING (después del checkout en Stripe)
-            cart = Order.objects.filter(customer=request.user, status='PROCESSING').first()
+            cart: Optional[Order] = Order.objects.filter(customer=request.user, status='PROCESSING').first()
             
-            if not cart:
+            if cart is None:
                 # Si no hay orden en PROCESSING, buscar en PENDING (por compatibilidad)
                 cart = Order.objects.filter(customer=request.user, status='PENDING').first()
             
-            if not cart:
+            if cart is None:
                 return response.Response({
                     'error': 'No order found to complete'
                 }, status=status.HTTP_404_NOT_FOUND)
@@ -281,7 +323,7 @@ class CompleteOrderView(views.APIView):
             cart.save()
 
             # 3. Reduce el stock de los productos
-            for item in cart.items.all():
+            for item in cart.items.all():  # type: ignore[attr-defined]
                 product = item.product
                 if product.stock >= item.quantity:
                     product.stock -= item.quantity
@@ -295,7 +337,7 @@ class CompleteOrderView(views.APIView):
             return response.Response({
                 'success': True,
                 'message': 'Order completed successfully',
-                'order_id': cart.id
+                'order_id': cart.id  # type: ignore[attr-defined]
             }, status=status.HTTP_200_OK)
 
         except Exception as e:
@@ -319,14 +361,14 @@ class ManualOrderCompletionView(views.APIView):
 
         try:
             # 1. Encuentra la orden PENDIENTE del cliente especificado
-            order = Order.objects.get(customer_id=user_id, status='PENDING')
+            order: Order = Order.objects.get(customer_id=user_id, status='PENDING')
 
             # 2. Cambia el estado a COMPLETADO
             order.status = 'COMPLETED'
             order.save()
 
             # 3. Reduce el stock de los productos
-            for item in order.items.all():
+            for item in order.items.all():  # type: ignore[attr-defined]
                 product = item.product
                 if product.stock >= item.quantity:
                     product.stock -= item.quantity
@@ -334,7 +376,7 @@ class ManualOrderCompletionView(views.APIView):
                 else:
                     print(f"Alerta de Stock (Debug): Stock insuficiente para el producto {product.id}")
 
-            return response.Response({'success': f'Order {order.id} for user {user_id} has been marked as COMPLETED.'}, status=status.HTTP_200_OK)
+            return response.Response({'success': f'Order {order.id} for user {user_id} has been marked as COMPLETED.'}, status=status.HTTP_200_OK)  # type: ignore[attr-defined]
 
         except Order.DoesNotExist:
             return response.Response({'error': f'No pending order found for user {user_id}.'}, status=status.HTTP_404_NOT_FOUND)
@@ -351,25 +393,25 @@ class CompleteUserOrderView(views.APIView):
     def post(self, request):
         try:
             # Busca la orden en estado PROCESSING del usuario
-            order = Order.objects.get(customer=request.user, status='PROCESSING')
+            order: Order = Order.objects.get(customer=request.user, status='PROCESSING')
             
             # Cambia el estado a COMPLETED
             order.status = 'COMPLETED'
             order.save()
             
             # Reduce el stock de los productos
-            for item in order.items.all():
+            for item in order.items.all():  # type: ignore[attr-defined]
                 product = item.product
                 if product.stock >= item.quantity:
                     product.stock -= item.quantity
                     product.save()
                 else:
-                    print(f"Alerta: Stock insuficiente para el producto {product.id} en la orden {order.id}")
+                    print(f"Alerta: Stock insuficiente para el producto {product.id} en la orden {order.id}")  # type: ignore[attr-defined]
             
             return response.Response({
                 'success': True,
                 'message': 'Orden completada exitosamente',
-                'order_id': order.id
+                'order_id': order.id  # type: ignore[attr-defined]
             }, status=status.HTTP_200_OK)
             
         except Order.DoesNotExist:
@@ -399,13 +441,18 @@ class SalesHistoryView(generics.ListAPIView):
     permission_classes = [IsAdminUser]
     serializer_class = OrderSerializer
     filterset_class = OrderFilter
-    filter_backends = [django_filters.rest_framework.DjangoFilterBackend]
+    filter_backends = [DjangoFilterBackend]
 
     def get_queryset(self):
         """
         Filtra las órdenes para devolver solo las que tienen el estado 'COMPLETED'.
         """
-        return Order.objects.filter(status='COMPLETED').select_related('customer').prefetch_related('items__product').order_by('-updated_at')
+        return (
+            Order.objects.filter(status='COMPLETED')
+            .select_related('customer')
+            .prefetch_related('items__product')
+            .order_by('-updated_at')
+        )
 
 
 class SalesHistoryDetailView(generics.RetrieveAPIView):
@@ -431,18 +478,16 @@ class GenerateOrderReceiptPDF(views.APIView):
         try:
             # 1. Buscamos la orden completada
             # ✅ OPTIMIZADO: prefetch_related para traer items y productos
-            order = Order.objects.select_related('customer').prefetch_related(
+            order: Order = Order.objects.select_related('customer').prefetch_related(
                 'items__product__category'
             ).get(id=order_id, status='COMPLETED')
         except Order.DoesNotExist:
             return response.Response({'error': 'Completed order not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        # 2. Creamos una respuesta HTTP de tipo PDF
-        response_pdf = HttpResponse(content_type='application/pdf')
-        response_pdf['Content-Disposition'] = f'attachment; filename="receipt_order_{order.id}.pdf"'
-
-        # 3. Creamos el lienzo del PDF
-        p = canvas.Canvas(response_pdf, pagesize=letter)
+        # 2. Creamos buffer en memoria para el PDF (evita warning de tipos de Pylance)
+        buffer = BytesIO()
+        # 3. Creamos el lienzo del PDF usando el buffer
+        p = canvas.Canvas(buffer, pagesize=letter)
         width, height = letter
 
         # --- DIBUJAMOS EL CONTENIDO DEL PDF ---
@@ -450,7 +495,7 @@ class GenerateOrderReceiptPDF(views.APIView):
         p.drawString(72, height - 72, "Nota de Venta / Comprobante")
 
         p.setFont("Helvetica", 12)
-        p.drawString(72, height - 108, f"Orden N°: {order.id}")
+        p.drawString(72, height - 108, f"Orden N°: {order.id}")  # type: ignore[attr-defined]
         p.drawString(72, height - 126, f"Fecha: {order.updated_at.strftime('%d/%m/%Y %H:%M')}")
 
         p.drawString(width - 250, height - 108, "Cliente:")
@@ -459,11 +504,11 @@ class GenerateOrderReceiptPDF(views.APIView):
         p.setFont("Helvetica", 12)
         p.drawString(width - 250, height - 144, f"(@{order.customer.username})")
 
-        p.line(72, height - 160, width - 72, height - 160) # Línea divisoria
+        p.line(72, height - 160, width - 72, height - 160)  # Línea divisoria
 
         # 4. Creamos la tabla de productos
         table_data = [['Producto', 'Cantidad', 'Precio Unit.', 'Subtotal']]
-        for item in order.items.all():
+        for item in order.items.all():  # type: ignore[attr-defined]
             subtotal = item.quantity * item.price
             table_data.append([
                 item.product.name,
@@ -493,6 +538,10 @@ class GenerateOrderReceiptPDF(views.APIView):
         p.showPage()
         p.save()
 
+        # 6. Construimos la respuesta HTTP a partir del buffer
+        buffer.seek(0)
+        response_pdf = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+        response_pdf['Content-Disposition'] = f'attachment; filename="receipt_order_{order.id}.pdf"'  # type: ignore[attr-defined]
         return response_pdf
 
 # --- NUEVA VISTA PARA LAS ÓRDENES DEL CLIENTE LOGUEADO ---

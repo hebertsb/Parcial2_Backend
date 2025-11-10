@@ -12,10 +12,12 @@ class ProfileSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     profile = ProfileSerializer()
+    is_staff = serializers.BooleanField(read_only=True)
+    is_superuser = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'profile')
+        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'profile', 'is_staff', 'is_superuser')
 
 
 class RegisterSerializer(serializers.ModelSerializer):
