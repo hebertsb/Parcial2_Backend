@@ -22,6 +22,14 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS('Admins encontrados:'))
         for u in admins:
             role = getattr(getattr(u, 'profile', None), 'role', 'N/A')
-            self.stdout.write(f"- id={u.id} username={u.username} email={u.email} is_staff={u.is_staff} is_superuser={u.is_superuser} role={role}")
+            # Accesos seguros para evitar advertencias estáticas (Pylance) sobre atributos dinámicos de Django
+            uid = getattr(u, 'id', getattr(u, 'pk', ''))
+            username = getattr(u, 'username', '')
+            email = getattr(u, 'email', '')
+            is_staff = getattr(u, 'is_staff', False)
+            is_superuser = getattr(u, 'is_superuser', False)
+            self.stdout.write(
+                f"- id={uid} username={username} email={email} is_staff={is_staff} is_superuser={is_superuser} role={role}"
+            )
         
         self.stdout.write(self.style.NOTICE('Por seguridad, las contraseñas NO pueden mostrarse. Si necesitas actualizar una, usa el comando set_admin_password.'))

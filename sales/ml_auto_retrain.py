@@ -53,6 +53,8 @@ class RetrainConfig:
     # Cache keys
     CACHE_LAST_RETRAIN_CHECK = 'ml_last_retrain_check'
     CACHE_ORDERS_COUNT_AT_TRAINING = 'ml_orders_count_at_training'
+    # Algoritmo por defecto para reentrenamiento (linear|rf)
+    DEFAULT_ALGORITHM = 'rf'
 
 
 # ============================================================================
@@ -202,7 +204,15 @@ def auto_retrain_if_needed(force: bool = False) -> Dict[str, Any]:
         print(f"   Razones: {', '.join(result['reasons'])}")
 
         # Crear y entrenar nuevo modelo
-        predictor = SimpleSalesPredictor()
+        # Elegir algoritmo
+        if getattr(RetrainConfig, 'DEFAULT_ALGORITHM', 'linear') == 'rf':
+            try:
+                from sales.ml_predictor_rf import RandomForestSalesPredictor
+                predictor = RandomForestSalesPredictor()
+            except Exception:
+                predictor = SimpleSalesPredictor()
+        else:
+            predictor = SimpleSalesPredictor()
         metrics = predictor.train()
 
         # Guardar modelo
@@ -210,7 +220,8 @@ def auto_retrain_if_needed(force: bool = False) -> Dict[str, Any]:
         model_info = model_manager.save_model(
             predictor,
             notes=f"Reentrenamiento automático. Razones: {', '.join(result['reasons'])}",
-            version=None  # Auto-genera versión con timestamp
+            version=None,  # Auto-genera versión con timestamp
+            algorithm=getattr(RetrainConfig, 'DEFAULT_ALGORITHM', 'linear')
         )
 
         # Guardar contador de órdenes

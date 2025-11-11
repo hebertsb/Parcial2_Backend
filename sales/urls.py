@@ -42,7 +42,16 @@ from .views_sales_predictions_dashboard import (
     sales_predictions_dashboard, top_products_predictions_dashboard, combined_predictions_dashboard
 )
 from .views_unified_reports import (
-    UnifiedReportListView, UnifiedIntelligentReportView, test_intelligent_parser
+    procesar_comando_ia,
+    obtener_datos_graficas,
+    generar_reporte_ventas,
+    generar_reporte_clientes,
+    generar_reporte_productos,
+)
+from .views_chatbot import (
+    nlp_train_intents,
+    nlp_parse_intent,
+    chatbot_interact,
 )
 from .views_audit import (
     AuditLogListView, AuditLogDetailView, AuditStatisticsView, UserActivityView,
@@ -67,22 +76,24 @@ urlpatterns = [
     path('my-orders/', MyOrderListView.as_view(), name='my-orders'),
     path('debug/complete-order/', ManualOrderCompletionView.as_view(), name='debug-complete-order'),
     
-    # === 🚀 SISTEMA UNIFICADO DE REPORTES INTELIGENTES (NUEVO) ===
-    path('reports/unified/list/', UnifiedReportListView.as_view(), name='unified-reports-list'),
-    path('reports/unified/generate/', UnifiedIntelligentReportView.as_view(), name='unified-intelligent-report'),
-    path('reports/unified/test/', test_intelligent_parser, name='test-intelligent-parser'),
+    # === � REPORTES (V2.3) ===
+    path('reports/ia/procesar/', procesar_comando_ia, name='reports-ia-procesar'),
+    path('reports/graficas/', obtener_datos_graficas, name='reports-graficas'),
+    path('reports/ventas/', generar_reporte_ventas, name='reports-ventas'),
+    path('reports/clientes/', generar_reporte_clientes, name='reports-clientes'),
+    path('reports/productos/', generar_reporte_productos, name='reports-productos'),
+    # === NLP & Chatbot ===
+    path('reports/nlp/train/', nlp_train_intents, name='reports-nlp-train'),
+    path('reports/nlp/parse/', nlp_parse_intent, name='reports-nlp-parse'),
+    path('reports/chatbot/', chatbot_interact, name='reports-chatbot'),
 
     # === REPORTES DINÁMICOS ===
     # ❌ ELIMINADO: path('reports/generate/', GenerateDynamicReportView.as_view(), name='generate-report')
     # ✅ USAR: POST /api/sales/reports/unified/generate/ (Sistema Unificado Inteligente)
     # El sistema unificado soporta comandos en lenguaje natural, voz, y todos los formatos (JSON, PDF, Excel)
 
-    # === REPORTES AVANZADOS ===
-    path('reports/customer-analysis/', CustomerAnalysisReportView.as_view(), name='customer-analysis'),
-    path('reports/product-abc/', ProductABCAnalysisView.as_view(), name='product-abc'),
-    path('reports/comparative/', ComparativeReportView.as_view(), name='comparative-report'),
-    path('reports/dashboard/', ExecutiveDashboardView.as_view(), name='executive-dashboard'),
-    path('reports/inventory-analysis/', InventoryAnalysisView.as_view(), name='inventory-analysis'),
+    # === REPORTES AVANZADOS (REMOVIDOS) ===
+    # Endpoints antiguos deshabilitados a favor del nuevo esquema v2.3.
     
     # === DASHBOARD EN TIEMPO REAL ===
     path('dashboard/realtime/', RealTimeDashboardView.as_view(), name='realtime-dashboard'),

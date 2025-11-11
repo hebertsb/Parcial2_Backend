@@ -7,6 +7,7 @@ Procesa comandos en lenguaje natural y enruta al reporte correcto.
 import re
 from datetime import datetime, timedelta
 from django.utils import timezone
+from .nlp_intent_classifier import predict_intent_or_none
 
 
 class IntelligentReportRouter:
@@ -193,6 +194,12 @@ class IntelligentReportRouter:
         best_score = 0
         alternatives = []
 
+        # 0. Intento con modelo NLP si está disponible
+        try:
+            nlp_res = predict_intent_or_none(self.command)
+        except Exception:
+            nlp_res = None
+
         for report_key, report_info in self.AVAILABLE_REPORTS.items():
             score = 0
 
@@ -209,6 +216,10 @@ class IntelligentReportRouter:
                     'score': score
                 })
 
+            # Si NLP propone exactamente este reporte con alta confianza, subir score artificialmente
+            if nlp_res and nlp_res.get('label') == report_key:
+                score += 10 if nlp_res.get('confidence', 0) >= 0.75 else 3
+
             # Actualizar mejor match
             if score > best_score:
                 best_score = score
@@ -221,7 +232,10 @@ class IntelligentReportRouter:
             self.result['report_description'] = report_info['description']
             self.result['endpoint_type'] = report_info['endpoint_type']
             self.result['supports_ml'] = report_info['supports_ml']
-            self.result['confidence'] = min(best_score / 3.0, 1.0)  # Normalizar a 0-1
+            base_conf = min(best_score / 3.0, 1.0)
+            if nlp_res and nlp_res.get('label') == self.result['report_type']:
+                base_conf = max(base_conf, float(nlp_res.get('confidence', 0)))
+            self.result['confidence'] = base_conf
 
             # Ordenar alternativas por score
             alternatives.sort(key=lambda x: x['score'], reverse=True)

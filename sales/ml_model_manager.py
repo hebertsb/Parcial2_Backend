@@ -1,5 +1,9 @@
 """
 Sistema de gestión de modelos ML: serialización, versionado y carga.
+
+Compatibilidad:
+- Modelos existentes (lineales) siguen funcionando.
+- Se agrega soporte para "algorithm" (linear|rf) en metadata y archivo.
 """
 import os
 import joblib
@@ -9,7 +13,12 @@ from typing import Optional, Dict, Any, List
 from pathlib import Path
 
 from django.conf import settings
+from typing import Any
 from sales.ml_predictor_simple import SimpleSalesPredictor
+try:
+    from sales.ml_predictor_rf import RandomForestSalesPredictor  # opcional para evitar fallos
+except Exception:  # pragma: no cover
+    RandomForestSalesPredictor = None  # type: ignore
 
 
 class ModelManager:
@@ -52,10 +61,11 @@ class ModelManager:
             json.dump(metadata, f, indent=2)
     
     def save_model(
-        self, 
-        predictor: SimpleSalesPredictor, 
+        self,
+        predictor: Any,
         version: Optional[str] = None,
-        notes: str = ""
+        notes: str = "",
+        algorithm: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Guarda un modelo entrenado en disco.
@@ -78,13 +88,20 @@ class ModelManager:
         print(f"💾 Guardando modelo en: {filepath}")
         
         # Guardar modelo y datos de entrenamiento
+        # Detectar algoritmo si no se especificó
+        algo = algorithm
+        if algo is None:
+            cls_name = predictor.__class__.__name__.lower()
+            algo = 'rf' if 'randomforest' in cls_name else 'linear'
+
         model_data = {
             'model': predictor.model,
-            'poly_features': predictor.poly_features,
+            'poly_features': getattr(predictor, 'poly_features', None),
             'training_data': predictor.training_data,
             'last_trained': predictor.last_trained,
             'metrics': predictor.metrics,
-            'min_date': predictor.min_date
+            'min_date': getattr(predictor, 'min_date', None),
+            'algorithm': algo,
         }
         
         joblib.dump(model_data, filepath)
@@ -98,7 +115,8 @@ class ModelManager:
             'saved_at': datetime.now().isoformat(),
             'metrics': predictor.metrics,
             'notes': notes,
-            'file_size_mb': round(os.path.getsize(filepath) / (1024 * 1024), 2)
+            'file_size_mb': round(os.path.getsize(filepath) / (1024 * 1024), 2),
+            'algorithm': algo,
         }
         
         metadata['models'].append(model_info)
@@ -112,7 +130,7 @@ class ModelManager:
         
         return model_info
     
-    def load_model(self, version: Optional[str] = None) -> SimpleSalesPredictor:
+    def load_model(self, version: Optional[str] = None) -> Any:
         """
         Carga un modelo guardado desde disco.
         
@@ -152,15 +170,24 @@ class ModelManager:
         print(f"📂 Cargando modelo: {model_info['version']}")
         
         model_data = joblib.load(filepath)
-        
+
+        # Determinar algoritmo
+        algo = model_data.get('algorithm') or model_info.get('algorithm') or 'linear'
+
         # Crear predictor y restaurar estado
-        predictor = SimpleSalesPredictor()
+        if algo == 'rf' and RandomForestSalesPredictor is not None:
+            predictor = RandomForestSalesPredictor()
+        else:
+            predictor = SimpleSalesPredictor()
+
         predictor.model = model_data['model']
-        predictor.poly_features = model_data.get('poly_features')
+        if hasattr(predictor, 'poly_features'):
+            setattr(predictor, 'poly_features', model_data.get('poly_features'))
         predictor.training_data = model_data['training_data']
         predictor.last_trained = model_data['last_trained']
         predictor.metrics = model_data['metrics']
-        predictor.min_date = model_data.get('min_date')
+        if hasattr(predictor, 'min_date'):
+            setattr(predictor, 'min_date', model_data.get('min_date'))
         
         print(f"✓ Modelo cargado exitosamente")
         print(f"  Entrenado: {model_data['last_trained']}")
@@ -264,7 +291,7 @@ class ModelManager:
         
         return True
     
-    def get_or_create_current_model(self) -> SimpleSalesPredictor:
+    def get_or_create_current_model(self) -> Any:
         """
         Obtiene el modelo actual o crea uno nuevo si no existe.
         
@@ -312,7 +339,7 @@ class ModelManager:
 model_manager = ModelManager()
 
 
-def get_predictor() -> SimpleSalesPredictor:
+def get_predictor() -> Any:
     """
     Función helper para obtener el predictor actual.
     

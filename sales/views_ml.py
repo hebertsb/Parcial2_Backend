@@ -8,6 +8,10 @@ from rest_framework.response import Response
 
 from sales.ml_predictor_simple import SimpleSalesPredictor
 from sales.ml_model_manager import model_manager, get_predictor
+try:
+    from sales.ml_predictor_rf import RandomForestSalesPredictor
+except Exception:  # pragma: no cover
+    RandomForestSalesPredictor = None  # type: ignore
 from sales.ml_data_generator import generate_sales_data
 from sales.ml_auto_retrain import should_retrain_model, auto_retrain_if_needed, get_retrain_status
 
@@ -66,23 +70,29 @@ def train_model(request):
     try:
         notes = request.data.get('notes', 'Entrenamiento manual desde API')
         version = request.data.get('version', None)
+        algorithm = (request.data.get('algorithm') or 'linear').lower()
         
         # Entrenar modelo
-        predictor = SimpleSalesPredictor()
+        if algorithm == 'rf' and RandomForestSalesPredictor is not None:
+            predictor = RandomForestSalesPredictor()
+        else:
+            predictor = SimpleSalesPredictor()
         metrics = predictor.train()
         
         # Guardar modelo
         model_info = model_manager.save_model(
-            predictor, 
+            predictor,
             version=version,
-            notes=notes
+            notes=notes,
+            algorithm=algorithm
         )
         
         return Response({
             'success': True,
             'message': 'Modelo entrenado y guardado exitosamente',
             'model_info': model_info,
-            'metrics': metrics
+            'metrics': metrics,
+            'algorithm': model_info.get('algorithm', algorithm)
         }, status=status.HTTP_201_CREATED)
         
     except ValueError as e:
@@ -340,11 +350,11 @@ def check_retrain_status(request):
         Estado del sistema de reentrenamiento automático
     """
     try:
-        status = get_retrain_status()
+        info = get_retrain_status()
 
         return Response({
             'success': True,
-            'data': status
+            'data': info
         })
 
     except Exception as e:

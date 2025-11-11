@@ -73,6 +73,7 @@ INSTALLED_APPS = [
     'sales',
     'notifications',
     'voice_commands',
+    'django_extensions',
 ]
 
 MIDDLEWARE = [
