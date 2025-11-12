@@ -301,10 +301,10 @@ class VoiceCommandProcessor:
 - "año 2024", "del año 2023"
 - "del 01/10/2024 al 18/10/2024"
 
-**📄 FORMATOS DE SALIDA:**
-- JSON (por defecto) - Agregar "en JSON"
+**📄 FORMATOS DE SALIDA (descargas disponibles):**
 - PDF - Agregar "en PDF"
 - Excel - Agregar "en Excel"
+- Word - Agregar "en Word" o "en DOCX"
 
 **💡 EJEMPLOS DE COMANDOS:**
 ✓ "reporte de ventas del último mes en PDF"

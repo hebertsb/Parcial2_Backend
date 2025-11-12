@@ -16,6 +16,7 @@ from .serializers import (
 from .voice_processor import VoiceCommandProcessor
 import threading
 from django.db import close_old_connections
+from .handlers import handle_search_products, handle_recommend_products, handle_add_to_cart
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +205,157 @@ class VoiceCommandViewSet(viewsets.ModelViewSet):
             voice_command.error_message = str(e)
             voice_command.save()
             return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['POST'], url_path='chat/process')
+    def chat_process(self, request):
+        """Endpoint conversacional para búsqueda, recomendaciones y añadir al carrito.
+
+        Request JSON: {"text": "...", "intent_hint": "add_to_cart|search|recommend"}
+        """
+        serializer = VoiceCommandTextSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response({'success': False, 'error': 'Datos inválidos', 'details': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+        validated = cast(Dict[str, Any], (getattr(serializer, 'validated_data', None) or {}))
+        text = validated.get('text', '').strip()
+        intent_hint = validated.get('intent_hint')
+
+        # Guardar el comando en BD para trazabilidad
+        vc = VoiceCommand.objects.create(user=request.user, command_text=text, status='PROCESSING')
+        VoiceCommandHistory.objects.create(voice_command=vc, stage='TEXT_INPUT', message=f'Chat input: {text}', data={})
+
+        # Usar IA (VoiceCommandProcessor) siempre para interpretar la entrada del usuario.
+        # Esto permite manejar preguntas libres como "¿tienen heladera LG?" o "qué me recomiendas"
+        t_low = text.lower()
+        intent = intent_hint
+        processor = VoiceCommandProcessor(user=request.user)
+        parsed = processor.process_command(text)
+
+        # Si el parser identifica un tipo de comando ecommerce claro, lo usamos.
+        if not intent and parsed:
+            p_cmd = parsed.get('command_type')
+            if p_cmd in ('recommend', 'search', 'add_to_cart'):
+                intent = p_cmd
+
+        # Si todavía no está claro, aplicar heurísticas más simples
+        if not intent:
+            if any(w in t_low for w in ['recomienda', 'recomiéndame', 'sugiere', 'sugerir']):
+                intent = 'recommend'
+            elif any(k in t_low for k in ['añade', 'agrega', 'al carrito', 'alcarrito', 'añadir', 'agregar', 'pon en el carrito', 'comprame', 'comprarme']):
+                intent = 'add_to_cart'
+            elif any(w in t_low for w in ['buscar', 'tienes', 'hay', 'muéstrame', 'mostrar', 'mostrarme']):
+                intent = 'search'
+            else:
+                # Por defecto usar 'search' para preguntas abiertas sobre productos
+                intent = 'search'
+                # si parser sugiere un reporte detectamos y ofrecer formatos de descarga
+                if parsed.get('command_type') in ('reporte', 'reporte_pdf', 'reporte_excel', 'report'):
+                    # Si el parser entiende que es un reporte, revisar formato esperado
+                    fmt = None
+                    try:
+                        fmt = parsed.get('params', {}).get('format') or parsed.get('format')
+                    except Exception:
+                        fmt = None
+
+                    # Decidir comportamiento para reportes:
+                    # - Si el usuario pidió explícitamente una descarga ("descarg" o menciona PDF/Excel/Word),
+                    #   ofrecer solo formatos binarios permitidos.
+                    # - No sugerir nunca "json" como opción de descarga.
+                    allowed_bin = {'pdf', 'excel', 'xlsx', 'docx', 'word'}
+                    user_requested_download = ('descarg' in t_low) or any(k in t_low for k in ['pdf', 'excel', 'word', 'docx', 'xlsx'])
+                    fmt_l = str(fmt).lower() if fmt else None
+
+                    if user_requested_download or (fmt_l and fmt_l in allowed_bin):
+                        formats = ['pdf', 'xlsx', 'docx']
+                        vc.status = 'EXECUTED'
+                        vc.result_data = {'type': 'offer_download', 'report': parsed.get('report_name'), 'formats': formats}
+                        vc.save()
+                        return Response({
+                            'success': True,
+                            'intent': 'offer_download_formats',
+                            'message': 'Puedo generar el reporte en varios formatos. ¿Cuál prefieres?',
+                            'actions': [{'type': 'offer_download_formats', 'formats': formats}],
+                            'report_hint': parsed.get('report_name')
+                        })
+
+                    # Si el parser pidió JSON o el usuario NO solicitó descarga, devolver un resumen en texto
+                    if fmt_l and fmt_l == 'json':
+                        # Construir un resumen simple para mostrar en la UI
+                        parsed_result = parsed.get('result') or {}
+                        report_info = parsed_result.get('report_info', {}) if isinstance(parsed_result, dict) else {}
+                        metadata = parsed_result.get('metadata', {}) if isinstance(parsed_result, dict) else {}
+                        total = metadata.get('total_records', 'N/A')
+                        report_name = report_info.get('name') or parsed.get('params', {}).get('report_type') or parsed.get('report_name')
+
+                        # Intentar obtener una vista previa de la primera fila
+                        preview = ''
+                        try:
+                            data_section = parsed_result.get('data') if isinstance(parsed_result, dict) else None
+                            if isinstance(data_section, dict) and 'rows' in data_section and isinstance(data_section['rows'], list) and data_section['rows']:
+                                first_row = data_section['rows'][0]
+                                preview = str(first_row)
+                            elif isinstance(data_section, list) and data_section:
+                                preview = str(data_section[0])
+                        except Exception:
+                            preview = ''
+
+                        summary_text = f"{report_name}: {total} registros." + (f" Ejemplo: {preview}" if preview else '')
+
+                        vc.status = 'EXECUTED'
+                        vc.result_data = {'type': 'report_summary', 'report': report_name, 'summary': summary_text, 'details': parsed_result}
+                        vc.save()
+
+                        return Response({
+                            'success': True,
+                            'intent': 'report_summary',
+                            'message': 'Aquí tienes un resumen del reporte',
+                            'summary': summary_text,
+                            'details': parsed_result,
+                            'report_hint': report_name
+                        })
+
+                # si el parser devuelve un intent ecommerce claro, usarlo
+                intent = parsed.get('command_type') if parsed and parsed.get('command_type') in ('search', 'recommend', 'add_to_cart') else 'search'
+
+        # Ejecutar intent
+        try:
+            if intent == 'search':
+                res = handle_search_products(text)
+                vc.status = 'EXECUTED'
+                vc.result_data = {'type': 'search', 'result': res}
+                vc.save()
+                return Response({'success': True, 'intent': 'search', 'result': res})
+
+            if intent == 'recommend' or intent == 'recommend_products':
+                res = handle_recommend_products(request.user, text)
+                vc.status = 'EXECUTED'
+                vc.result_data = {'type': 'recommend', 'result': res}
+                vc.save()
+                return Response({'success': True, 'intent': 'recommend', 'result': res})
+
+            if intent == 'add_to_cart':
+                # intentar extraer id si existe
+                res = handle_add_to_cart(request.user, text)
+                if res.get('success'):
+                    vc.status = 'EXECUTED'
+                    vc.result_data = {'type': 'add_to_cart', 'result': res}
+                    vc.save()
+                    return Response({'success': True, 'intent': 'add_to_cart', 'result': res})
+                else:
+                    vc.status = 'FAILED'
+                    vc.error_message = res.get('error')
+                    vc.save()
+                    return Response({'success': False, 'intent': 'add_to_cart', 'error': res.get('error')}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Default
+            return Response({'success': False, 'error': 'Intent no soportado'}, status=status.HTTP_400_BAD_REQUEST)
+
+        except Exception as e:
+            logger.error(f"Error al procesar chat intent: {e}", exc_info=True)
+            vc.status = 'FAILED'
+            vc.error_message = str(e)
+            vc.save()
+            return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     @action(detail=False, methods=['GET'], url_path='history')
     def history(self, request):
@@ -248,7 +400,7 @@ class VoiceCommandViewSet(viewsets.ModelViewSet):
                     'ventas por cliente del año 2024',
                     'análisis ABC de productos en PDF'
                 ],
-                'supported_formats': ['JSON', 'PDF', 'Excel'],
+                'supported_formats': ['PDF', 'Excel', 'Word'],
                 'supported_date_ranges': [
                     'hoy', 'ayer', 'esta semana', 'este mes', 'este año',
                     'última semana', 'último mes', 'último año',
