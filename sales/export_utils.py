@@ -89,6 +89,55 @@ def exportar_reporte_pdf(report: Dict[str, Any]) -> BytesIO:
         periodo_txt.append(f"Moneda: {meta['currency']}")
     if periodo_txt:
         story.append(Paragraph(' | '.join(periodo_txt), styles['Info']))
+    # Añadir resumen de filtros aplicados si vienen en report['parameters'] o report['filters']
+    filtros_source = report.get('parameters') or report.get('filters') or (meta.get('filters') if isinstance(meta, dict) else None)
+    if isinstance(filtros_source, dict) and filtros_source:
+        # Construir filas de pares clave/valor
+        filtro_rows = []
+        # Manejar date_range especial si existe
+        date_range = filtros_source.get('date_range') if isinstance(filtros_source.get('date_range', None), dict) else filtros_source.get('date_range')
+        if isinstance(date_range, dict):
+            if date_range.get('description'):
+                filtro_rows.append(['Período', date_range['description']])
+            if date_range.get('start'):
+                filtro_rows.append(['Fecha Inicio', date_range['start'][:10]])
+            if date_range.get('end'):
+                filtro_rows.append(['Fecha Fin', date_range['end'][:10]])
+
+        # Otros filtros planos
+        for k, v in filtros_source.items():
+            if k == 'date_range':
+                continue
+            if v is None or v == '':
+                continue
+            if isinstance(v, (list, tuple)):
+                val = ', '.join(str(x) for x in v)
+            elif isinstance(v, dict):
+                val = ', '.join(f"{kk}:{vv}" for kk, vv in v.items())
+            else:
+                val = str(v)
+            filtro_rows.append([str(k).replace('_', ' ').title(), val])
+
+        if filtro_rows:
+            story.append(Spacer(1, 0.08*inch))
+            story.append(Paragraph('Filtros aplicados', styles['Heading4']))
+            story.append(Spacer(1, 0.04*inch))
+            # Crear tabla de filtros centrada
+            try:
+                fr_col_widths = [doc.width * 0.3, doc.width * 0.7]
+            except Exception:
+                fr_col_widths = [2 * inch, 4 * inch]
+            ft = Table(filtro_rows, colWidths=fr_col_widths, hAlign='CENTER')
+            ft.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f1f3f4')),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                ('GRID', (0, 0), (-1, -1), 0.25, colors.grey)
+            ]))
+            story.append(ft)
+            story.append(Spacer(1, 0.12*inch))
     story.append(Spacer(1, 0.15*inch))
 
     # Tabla principal
@@ -263,6 +312,46 @@ def exportar_reporte_docx(report: Dict[str, Any]) -> BytesIO:
         p2 = doc.add_paragraph(' | '.join(lines))
         for run in p2.runs:
             run.font.size = Pt(9)
+    
+    # Filtros aplicados (si vienen en report['parameters'] o report['filters'] o en metadata)
+    filtros_source = report.get('parameters') or report.get('filters') or meta.get('filters') if isinstance(meta, dict) else None
+    filter_items: List[List[str]] = []
+    if isinstance(filtros_source, dict):
+        for k, v in filtros_source.items():
+            if v is None or v == '':
+                continue
+            if isinstance(v, (list, tuple)):
+                val = ', '.join(str(x) for x in v)
+            elif isinstance(v, dict):
+                val = ', '.join(f"{kk}:{vv}" for kk, vv in v.items())
+            else:
+                val = str(v)
+            filter_items.append([str(k).replace('_', ' ').title(), val])
+    
+    # Si existen filtros, añadir una pequeña tabla con ellos
+    if filter_items:
+        doc.add_paragraph()
+        fh = doc.add_heading('Filtros aplicados', level=3)
+        fh.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        table_f = doc.add_table(rows=1, cols=2)
+        table_f.style = 'Light List Accent 1'
+        hdr = table_f.rows[0].cells
+        hdr[0].text = 'Filtro'
+        hdr[1].text = 'Valor'
+        for cell in hdr:
+            for para in cell.paragraphs:
+                for run in para.runs:
+                    run.font.bold = True
+                    run.font.size = Pt(9)
+        for k, v in filter_items:
+            r = table_f.add_row().cells
+            r[0].text = k
+            r[1].text = v
+            # ajustar tamaño de fuente en las celdas
+            for cell in r:
+                for para in cell.paragraphs:
+                    for run in para.runs:
+                        run.font.size = Pt(9)
 
     # Tabla principal
     headers = report.get('headers') or []

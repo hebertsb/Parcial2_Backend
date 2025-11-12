@@ -6,6 +6,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from typing import Any, Dict, cast
 
 from .models import VoiceCommand, VoiceCommandHistory
 from .serializers import (
@@ -13,6 +14,8 @@ from .serializers import (
     VoiceCommandTextSerializer
 )
 from .voice_processor import VoiceCommandProcessor
+import threading
+from django.db import close_old_connections
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +87,10 @@ class VoiceCommandViewSet(viewsets.ModelViewSet):
                 'details': serializer.errors
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        text = serializer.validated_data['text']
+        # Evitar subscript sobre un posible None (Pylance puede marcar validated_data como Optional)
+        # Forzar tipo a dict para que Pylance reconozca métodos como .get
+        validated = cast(Dict[str, Any], (getattr(serializer, 'validated_data', None) or {}))
+        text = validated.get('text', '')
         
         # Crear el comando en BD
         voice_command = VoiceCommand.objects.create(
@@ -92,6 +98,10 @@ class VoiceCommandViewSet(viewsets.ModelViewSet):
             command_text=text,
             status='PROCESSING'
         )
+        # Ayuda para Pylance: evitar warnings de atributo implícito de Django (id, fields)
+        # Algunos analizadores estáticos no reconocen atributos creados por Django en tiempo de ejecución,
+        # así que casteamos a Any para silenciar esos avisos en accesos como `voice_command.id`.
+        voice_command = cast(Any, voice_command)
         
         VoiceCommandHistory.objects.create(
             voice_command=voice_command,
@@ -101,61 +111,99 @@ class VoiceCommandViewSet(viewsets.ModelViewSet):
         )
         
         try:
-            # Procesar el comando
+            # Procesamiento en hilo con intento síncrono corto.
+            # Si el procesamiento termina dentro del timeout lo devolvemos inmediatamente (auto-download posible).
+            # Si no termina, devolvemos rápida/primer respuesta y dejamos el worker terminar en background.
             processor = VoiceCommandProcessor(user=request.user)
-            command_result = processor.process_command(text)
-            
-            # Actualizar el comando
-            voice_command.command_type = command_result.get('command_type')
-            voice_command.interpreted_params = command_result.get('params', {})
-            voice_command.confidence_score = command_result.get('confidence', 0.0)  # ✅ GUARDAMOS CONFIDENCE
-            
-            if command_result.get('success'):
-                voice_command.status = 'EXECUTED'
-                voice_command.result_data = command_result.get('result', {})
-                
-                VoiceCommandHistory.objects.create(
-                    voice_command=voice_command,
-                    stage='EXECUTION_SUCCESS',
-                    message='Comando ejecutado exitosamente',
-                    data={'command_type': command_result.get('command_type')}
-                )
+
+            # Worker que ejecuta el procesamiento y actualiza la BD
+            def _worker_process(vc_id, txt):
+                try:
+                    # Asegurar conexiones limpias en el hilo
+                    close_old_connections()
+                    proc = VoiceCommandProcessor(user=request.user)
+                    result = proc.process_command(txt)
+
+                    vc = VoiceCommand.objects.get(id=vc_id)
+                    vc = cast(Any, vc)
+                    vc.command_type = result.get('command_type')
+                    vc.interpreted_params = result.get('params', {})
+                    vc.confidence_score = result.get('confidence', 0.0)
+
+                    if result.get('success'):
+                        vc.status = 'EXECUTED'
+                        vc.result_data = result.get('result', {})
+                        VoiceCommandHistory.objects.create(
+                            voice_command=vc,
+                            stage='EXECUTION_SUCCESS',
+                            message='Comando ejecutado exitosamente',
+                            data={'command_type': result.get('command_type')}
+                        )
+                    else:
+                        vc.status = 'FAILED'
+                        vc.error_message = result.get('error', 'Error desconocido')
+                        VoiceCommandHistory.objects.create(
+                            voice_command=vc,
+                            stage='EXECUTION_FAILED',
+                            message=f'Error: {vc.error_message}',
+                            data={}
+                        )
+
+                    end_t = time.time()
+                    vc.processing_time_ms = int((end_t - start_time) * 1000)
+                    vc.save()
+                except Exception as ex:
+                    logger.error(f"❌ Error en worker de procesamiento: {ex}", exc_info=True)
+                    try:
+                        vc = VoiceCommand.objects.get(id=vc_id)
+                        vc = cast(Any, vc)
+                        vc.status = 'FAILED'
+                        vc.error_message = str(ex)
+                        vc.save()
+                    except Exception:
+                        pass
+                finally:
+                    # Cerrar conexión del hilo
+                    close_old_connections()
+
+            # Capturar id en una variable simple para evitar accesos directos que Pylance marque
+            vc_id_local = getattr(voice_command, 'id')
+
+            # Iniciar worker en hilo
+            worker = threading.Thread(target=_worker_process, args=(vc_id_local, text), daemon=True)
+            worker.start()
+
+            # Intentar esperar un tiempo corto para respuesta rápida (umbral en segundos)
+            QUICK_TIMEOUT = 1.0  # seconds; ajustar si se desea más/menos tolerancia
+            worker.join(timeout=QUICK_TIMEOUT)
+
+            if worker.is_alive():
+                # Todavía procesando: respondemos rápidamente indicando que está en background
+                logger.info(f"⏳ Comando {vc_id_local} en procesamiento asíncrono (took > {QUICK_TIMEOUT}s)")
+                return Response({
+                    'success': True,
+                    'data': {
+                        'id': vc_id_local,
+                        'status': 'PROCESSING',
+                        'message': 'Procesamiento en segundo plano. Puede descargar cuando el comando esté EXECUTED.'
+                    }
+                }, status=status.HTTP_202_ACCEPTED)
             else:
-                voice_command.status = 'FAILED'
-                voice_command.error_message = command_result.get('error', 'Error desconocido')
-                
-                VoiceCommandHistory.objects.create(
-                    voice_command=voice_command,
-                    stage='EXECUTION_FAILED',
-                    message=f'Error: {voice_command.error_message}',
-                    data={}
-                )
-            
-            # Tiempo de procesamiento
-            end_time = time.time()
-            voice_command.processing_time_ms = int((end_time - start_time) * 1000)
-            voice_command.save()
-            
-            # Serializar y devolver
-            serializer = VoiceCommandSerializer(voice_command)
-            
-            return Response({
-                'success': command_result.get('success', False),
-                'data': serializer.data,
-                'message': 'Comando procesado exitosamente' if command_result.get('success') else voice_command.error_message
-            }, status=status.HTTP_200_OK if command_result.get('success') else status.HTTP_400_BAD_REQUEST)
-            
+                # Worker terminó rápido: cargar objeto actualizado y devolver resultado completo
+                voice_command.refresh_from_db()
+                serializer = VoiceCommandSerializer(voice_command)
+                return Response({
+                    'success': True,
+                    'data': serializer.data,
+                    'message': 'Comando procesado exitosamente'
+                }, status=status.HTTP_200_OK)
+
         except Exception as e:
-            logger.error(f"❌ Error al procesar texto: {e}")
-            
+            logger.error(f"❌ Error al iniciar procesamiento: {e}", exc_info=True)
             voice_command.status = 'FAILED'
             voice_command.error_message = str(e)
             voice_command.save()
-            
-            return Response({
-                'success': False,
-                'error': str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({'success': False, 'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     @action(detail=False, methods=['GET'], url_path='history')
     def history(self, request):
@@ -245,8 +293,15 @@ class VoiceCommandViewSet(viewsets.ModelViewSet):
             parameters = result_data.get('parameters', {})
             metadata = result_data.get('metadata', {})
             
-            # Crear documento PDF
-            doc = SimpleDocTemplate(buffer, pagesize=letter)
+            # Crear documento PDF con márgenes balanceados
+            doc = SimpleDocTemplate(
+                buffer,
+                pagesize=letter,
+                leftMargin=36,
+                rightMargin=36,
+                topMargin=36,
+                bottomMargin=36,
+            )
             elements = []
             styles = getSampleStyleSheet()
             
@@ -275,7 +330,13 @@ class VoiceCommandViewSet(viewsets.ModelViewSet):
                 ['Fecha de Generación:', voice_command.created_at.strftime('%d/%m/%Y %H:%M:%S')],
             ]
             
-            t1 = Table(command_info, colWidths=[2.5*inch, 4*inch])
+            # Centrar la tabla de información del comando y ajustar anchos relativos
+            try:
+                t1_col_widths = [doc.width * 0.35, doc.width * 0.65]
+            except Exception:
+                t1_col_widths = [2.5 * inch, 4 * inch]
+
+            t1 = Table(command_info, colWidths=t1_col_widths, hAlign='CENTER')
             t1.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#e8f0fe')),
                 ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
@@ -289,37 +350,53 @@ class VoiceCommandViewSet(viewsets.ModelViewSet):
             elements.append(Spacer(1, 0.5*inch))
             
             # Parámetros del reporte
+            # Añadir resumen de filtros aplicados justo debajo del título (si hay)
             if parameters:
-                param_title = Paragraph('<b>Parámetros del Reporte</b>', styles['Heading2'])
-                elements.append(param_title)
-                elements.append(Spacer(1, 0.2*inch))
-                
+                # Título pequeño para filtros
+                filtros_title = Paragraph('<b>Filtros aplicados</b>', styles['Heading3'])
+                elements.append(filtros_title)
+                elements.append(Spacer(1, 0.08*inch))
+
+                # Construir lista de pares (clave, valor)
+                filter_rows = []
                 date_range = parameters.get('date_range', {})
-                param_data = []
-                
                 if date_range.get('description'):
-                    param_data.append(['Período:', date_range['description']])
+                    filter_rows.append(['Período', date_range['description']])
                 if date_range.get('start'):
-                    param_data.append(['Fecha Inicio:', date_range['start'][:10]])
+                    filter_rows.append(['Fecha Inicio', date_range['start'][:10]])
                 if date_range.get('end'):
-                    param_data.append(['Fecha Fin:', date_range['end'][:10]])
-                if parameters.get('group_by'):
-                    param_data.append(['Agrupado por:', parameters['group_by'].title()])
-                if parameters.get('limit'):
-                    param_data.append(['Límite:', str(parameters['limit'])])
-                
-                if param_data:
-                    t2 = Table(param_data, colWidths=[2*inch, 4.5*inch])
-                    t2.setStyle(TableStyle([
+                    filter_rows.append(['Fecha Fin', date_range['end'][:10]])
+
+                # Otros parámetros planos
+                for k, v in parameters.items():
+                    if k == 'date_range':
+                        continue
+                    # Mostrar arrays y dicts de forma legible
+                    if isinstance(v, (list, tuple)):
+                        val = ', '.join(str(x) for x in v)
+                    elif isinstance(v, dict):
+                        val = ', '.join(f"{kk}:{vv}" for kk, vv in v.items())
+                    else:
+                        val = str(v)
+                    filter_rows.append([str(k).replace('_', ' ').title(), val])
+
+                if filter_rows:
+                    try:
+                        fr_col_widths = [doc.width * 0.3, doc.width * 0.7]
+                    except Exception:
+                        fr_col_widths = [2 * inch, 4 * inch]
+
+                    ft = Table(filter_rows, colWidths=fr_col_widths, hAlign='CENTER')
+                    ft.setStyle(TableStyle([
                         ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f1f3f4')),
                         ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
                         ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-                        ('FONTSIZE', (0, 0), (-1, -1), 10),
-                        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-                        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey)
+                        ('FONTSIZE', (0, 0), (-1, -1), 9),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                        ('GRID', (0, 0), (-1, -1), 0.25, colors.grey)
                     ]))
-                    elements.append(t2)
-                    elements.append(Spacer(1, 0.3*inch))
+                    elements.append(ft)
+                    elements.append(Spacer(1, 0.18*inch))
             
             # Descripción del reporte
             if report_info.get('description'):
@@ -378,8 +455,15 @@ class VoiceCommandViewSet(viewsets.ModelViewSet):
                     # Preparar datos para la tabla (headers + rows)
                     table_data = [headers] + rows[:50]  # Limitar a 50 filas para evitar PDFs muy grandes
 
-                    # Crear tabla
-                    data_table = Table(table_data)
+                    # Calcular anchos de columna para ocupar el ancho utilizable del documento
+                    try:
+                        col_count = len(headers)
+                        col_widths = [doc.width / col_count for _ in range(col_count)]
+                    except Exception:
+                        col_widths = None
+
+                    # Crear tabla centrada
+                    data_table = Table(table_data, colWidths=col_widths, hAlign='CENTER')
                     data_table.setStyle(TableStyle([
                         # Estilo del header
                         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a73e8')),
@@ -421,7 +505,13 @@ class VoiceCommandViewSet(viewsets.ModelViewSet):
                             ['Tasa de crecimiento:', f"{summary.get('growth_rate_percent', 0):+.2f}%"],
                         ]
 
-                        summary_table = Table(summary_data, colWidths=[3*inch, 2*inch])
+                        # Centrar la tabla de resumen y ajustar anchos relativos
+                        try:
+                            summary_col_widths = [doc.width * 0.6, doc.width * 0.4]
+                        except Exception:
+                            summary_col_widths = [3 * inch, 2 * inch]
+
+                        summary_table = Table(summary_data, colWidths=summary_col_widths, hAlign='CENTER')
                         summary_table.setStyle(TableStyle([
                             ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#e8f0fe')),
                             ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
@@ -486,10 +576,24 @@ class VoiceCommandViewSet(viewsets.ModelViewSet):
             from openpyxl import Workbook
             from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
             from openpyxl.utils import get_column_letter
-            
+            # Tipado para ayudar a Pylance
+            from typing import cast
+            try:
+                from openpyxl.worksheet.worksheet import Worksheet
+            except Exception:
+                Worksheet = None  # pragma: no cover - typing fallback
+
             # Crear workbook
             wb = Workbook()
+            # wb.active devuelve siempre una Worksheet en runtime, pero algunos analizadores lo tratan como Optional
             ws = wb.active
+            if ws is None:
+                ws = wb.create_sheet(title="Reporte")
+            else:
+                # forzar tipo para el analizador
+                if 'Worksheet' in globals() and Worksheet is not None:
+                    ws = cast(Worksheet, ws)
+
             ws.title = "Reporte"
             
             # Obtener datos del reporte
@@ -512,6 +616,38 @@ class VoiceCommandViewSet(viewsets.ModelViewSet):
             ws['A1'] = report_info.get('name', 'Reporte de Comandos Inteligentes')
             ws['A1'].font = title_font
             ws.merge_cells('A1:B1')
+
+            # Pequeño resumen de filtros para aparecer como encabezado en el Excel
+            if parameters:
+                try:
+                    parts = []
+                    date_range = parameters.get('date_range', {})
+                    if date_range.get('description'):
+                        parts.append(date_range['description'])
+                    if date_range.get('start') and date_range.get('end'):
+                        parts.append(f"{date_range['start'][:10]} - {date_range['end'][:10]}")
+
+                    for k, v in parameters.items():
+                        if k == 'date_range':
+                            continue
+                        if v is None or v == '':
+                            continue
+                        if isinstance(v, (list, tuple)):
+                            vv = ','.join(str(x) for x in v)
+                        elif isinstance(v, dict):
+                            vv = ','.join(f"{kk}:{vv}" for kk, vv in v.items())
+                        else:
+                            vv = str(v)
+                        parts.append(f"{str(k).replace('_', ' ').title()}: {vv}")
+
+                    summary_text = ' | '.join(parts)[:500]
+                    ws.merge_cells('A2:B2')
+                    ws['A2'] = summary_text
+                    ws['A2'].font = Font(italic=True, size=10)
+                    ws['A2'].alignment = Alignment(horizontal='center')
+                except Exception:
+                    # Si algo falla, no rompemos la generación del Excel
+                    pass
             
             # Información del comando
             row = 3
